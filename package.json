@@ -1,0 +1,20 @@
+{
+  "name": "raxios",
+  "version": "0.1.0",
+  "main": "index.js",
+  "scripts": {
+    "build": "napi build --platform --release",
+    "build:debug": "napi build --platform"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^2",
+    "typescript": "^5",
+    "@types/node": "^20"
+  },
+  "napi": {
+    "name": "raxios",
+    "triples": {
+      "defaults": true
+    }
+  }
+}
