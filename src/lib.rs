@@ -1,3 +1,5 @@
+mod error;
+
 use napi_derive::napi;
 
 #[napi]
