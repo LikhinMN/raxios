@@ -29,29 +29,71 @@ function createInstance(defaults) {
     }
 
     async function dispatchRequest(config) {
-        const body = typeof config.data === 'object' ? JSON.stringify(config.data) : config.data
+        let url = config.url
+        if (config.baseURL && !/^https?:\/\//i.test(url)) {
+            url = config.baseURL.replace(/\/+$/, '') + '/' + url.replace(/^\/+/, '')
+        }
+
+        if (config.params) {
+            const params = new URLSearchParams()
+            for (const [key, value] of Object.entries(config.params)) {
+                params.append(key, value)
+            }
+            const queryString = params.toString()
+            if (queryString) {
+                url += (url.includes('?') ? '&' : '?') + queryString
+            }
+        }
+
+        let headers = { ...config.headers }
+        let data = config.data
+
+        if (data && typeof data === 'object' && !headers['Content-Type']) {
+            headers['Content-Type'] = 'application/json'
+        }
+
+        if (config.transformRequest) {
+            const transforms = Array.isArray(config.transformRequest) 
+                ? config.transformRequest 
+                : [config.transformRequest]
+            transforms.forEach(fn => {
+                data = fn(data, headers)
+            })
+        }
+
+        const body = (data && typeof data === 'object') ? JSON.stringify(data) : data
 
         let res
         try {
             res = await request(
                 config.method,
-                config.url,
-                config.headers || null,
+                url,
+                headers || null,
                 body || null
             )
         } catch (e) {
             const err = new Error(e.message)
             err.code = e.code
-            err.config = config
+            err.config = { ...config, url } // Include merged URL in error config
             err.isRaxiosError = true
             throw err
         }
 
+        let responseData = tryParseJSON(res.data)
+        if (config.transformResponse) {
+            const transforms = Array.isArray(config.transformResponse)
+                ? config.transformResponse
+                : [config.transformResponse]
+            transforms.forEach(fn => {
+                responseData = fn(responseData)
+            })
+        }
+
         return {
-            data: tryParseJSON(res.data),
+            data: responseData,
             status: res.status,
             headers: res.headers,
-            config,
+            config: { ...config, url },
         }
     }
 
@@ -62,9 +104,14 @@ function createInstance(defaults) {
 
     // the core dispatch function
     async function dispatch(config) {
-        const cfg = { ...defaults, ...config,
-            headers: { ...defaults.headers, ...config.headers }
+        const { common = {}, ...restDefaults } = defaults.headers || {}
+        const headers = { 
+            ...common,
+            ...restDefaults,
+            ...config.headers 
         }
+
+        const cfg = { ...defaults, ...config, headers }
 
         // seed the chain with the real request in the middle
         const chain = [dispatchRequest, undefined]
@@ -85,11 +132,28 @@ function createInstance(defaults) {
             promise = promise.then(chain.shift(), chain.shift())
         }
 
+        if (cfg.timeout) {
+            const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => {
+                    const err = new Error(`timeout of ${cfg.timeout}ms exceeded`)
+                    err.code = 'ECONNABORTED'
+                    err.config = cfg
+                    reject(err)
+                }, cfg.timeout)
+            })
+            return Promise.race([promise, timeoutPromise])
+        }
+
         return promise
     }
 
     // the instance object
-    const instance = dispatch.bind(null)
+    const instance = (urlOrConfig, config) => {
+        if (typeof urlOrConfig === 'string') {
+            return dispatch({ method: 'GET', ...config, url: urlOrConfig })
+        }
+        return dispatch({ method: 'GET', ...urlOrConfig })
+    }
     Object.assign(instance, {
         interceptors,
         defaults,
@@ -102,9 +166,11 @@ function createInstance(defaults) {
     return instance
 }
 
-const raxios = createInstance({ headers: {} })
+const raxios = createInstance({ headers: { common: {} } })
 raxios.create = (config) => createInstance({ headers: {}, ...config })
 raxios.isRaxiosError = (err) => err?.isRaxiosError === true
+raxios.all = (promises) => Promise.all(promises)
+raxios.spread = (callback) => (arr) => callback(...arr)
 
 module.exports = raxios
 module.exports.default = raxios
