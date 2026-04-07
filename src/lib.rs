@@ -3,6 +3,15 @@ mod error;
 use napi_derive::napi;
 use std::collections::HashMap;
 
+use std::sync::OnceLock;
+use std::time::Duration;
+
+static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+
+fn get_client() -> &'static reqwest::Client {
+    CLIENT.get_or_init(reqwest::Client::new)
+}
+
 #[napi(object)]
 pub struct RaxiosResponse {
     pub status: u16,
@@ -15,8 +24,9 @@ pub async fn request(
     url: String,
     headers: Option<HashMap<String, String>>,
     body: Option<String>,
+    timeout: Option<u32>,
 ) -> napi::Result<RaxiosResponse> {
-    let client = reqwest::Client::new();
+    let client = get_client();
     let mut req = match method.to_uppercase().as_str() {
         "GET" => client.get(&url),
         "POST" => client.post(&url),
@@ -29,6 +39,10 @@ pub async fn request(
             ))
         }
     };
+
+    if let Some(ms) = timeout {
+        req = req.timeout(Duration::from_millis(ms as u64));
+    }
 
     if let Some(b) = body {
         req = req.body(b);
@@ -43,7 +57,13 @@ pub async fn request(
     let res = req
         .send()
         .await
-        .map_err(|e| napi::Error::new(napi::Status::GenericFailure, e.to_string()))?;
+        .map_err(|e| {
+            if e.is_timeout() {
+                napi::Error::new(napi::Status::GenericFailure, format!("timeout of {}ms exceeded", timeout.unwrap_or(0)))
+            } else {
+                napi::Error::new(napi::Status::GenericFailure, e.to_string())
+            }
+        })?;
 
     let status = res.status().as_u16();
 

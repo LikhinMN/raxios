@@ -69,11 +69,12 @@ function createInstance(defaults) {
                 config.method,
                 url,
                 headers || null,
-                body || null
+                body || null,
+                config.timeout || null
             )
         } catch (e) {
             const err = new Error(e.message)
-            err.code = e.code
+            err.code = e.message.includes('timeout') ? 'ECONNABORTED' : e.code
             err.config = { ...config, url } // Include merged URL in error config
             err.isRaxiosError = true
             throw err
@@ -130,18 +131,6 @@ function createInstance(defaults) {
         let promise = Promise.resolve(cfg)
         while (chain.length) {
             promise = promise.then(chain.shift(), chain.shift())
-        }
-
-        if (cfg.timeout) {
-            const timeoutPromise = new Promise((_, reject) => {
-                setTimeout(() => {
-                    const err = new Error(`timeout of ${cfg.timeout}ms exceeded`)
-                    err.code = 'ECONNABORTED'
-                    err.config = cfg
-                    reject(err)
-                }, cfg.timeout)
-            })
-            return Promise.race([promise, timeoutPromise])
         }
 
         return promise
