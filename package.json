@@ -1,15 +1,33 @@
 {
   "name": "raxios",
   "version": "0.1.0",
+  "description": "Axios-like HTTP client for Node.js backed by Rust reqwest via NAPI-RS",
+  "keywords": [
+    "http",
+    "client",
+    "axios",
+    "reqwest",
+    "napi-rs",
+    "rust"
+  ],
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LikhinMN/raxios.git"
+  },
   "main": "index.js",
+  "types": "index.d.ts",
   "scripts": {
     "build": "napi build --platform --release",
-    "build:debug": "napi build --platform"
+    "build:debug": "napi build --platform",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "devDependencies": {
     "@napi-rs/cli": "^2",
+    "@types/node": "^20",
     "typescript": "^5",
-    "@types/node": "^20"
+    "vitest": "^1.6.0"
   },
   "napi": {
     "name": "raxios",
