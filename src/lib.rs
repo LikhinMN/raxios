@@ -32,6 +32,9 @@ pub async fn request(
         "POST" => client.post(&url),
         "PUT" => client.put(&url),
         "DELETE" => client.delete(&url),
+        "PATCH" => client.patch(&url),
+        "HEAD" => client.head(&url),
+        "OPTIONS" => client.request(reqwest::Method::OPTIONS, &url),
         _ => {
             return Err(napi::Error::new(
                 napi::Status::GenericFailure,

@@ -149,7 +149,10 @@ function createInstance(defaults) {
         get: (url, config) => dispatch({ ...config, method: 'GET', url }),
         post: (url, data, config) => dispatch({ ...config, method: 'POST', url, data }),
         put: (url, data, config) => dispatch({ ...config, method: 'PUT', url, data }),
+        patch: (url, data, config) => dispatch({ ...config, method: 'PATCH', url, data }),
         delete: (url, config) => dispatch({ ...config, method: 'DELETE', url }),
+        head: (url, config) => dispatch({ ...config, method: 'HEAD', url }),
+        options: (url, config) => dispatch({ ...config, method: 'OPTIONS', url }),
     })
 
     return instance
