@@ -5,7 +5,7 @@
 
 export interface RaxiosResponse {
   status: number
-  data: string
+  data: string | Buffer
   headers: Record<string, string>
 }
-export declare function request(method: string, url: string, headers?: Record<string, string> | undefined | null, body?: string | undefined | null, timeout?: number | undefined | null): Promise<RaxiosResponse>
+export declare function request(method: string, url: string, headers?: Record<string, string> | undefined | null, body?: string | undefined | null, timeout?: number | undefined | null, responseType?: string | undefined | null): Promise<RaxiosResponse>

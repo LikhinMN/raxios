@@ -70,7 +70,8 @@ function createInstance(defaults) {
                 url,
                 headers || null,
                 body || null,
-                config.timeout || null
+                config.timeout || null,
+                config.responseType || null
             )
         } catch (e) {
             let err;
@@ -114,9 +115,15 @@ function createInstance(defaults) {
         }
     }
 
-    function tryParseJSON(str) {
-        try { return JSON.parse(str) }
-        catch { return str }
+    function tryParseJSON(value) {
+        if (Buffer.isBuffer(value)) {
+            return value;
+        }
+        if (typeof value !== 'string') {
+            return value;
+        }
+        try { return JSON.parse(value) }
+        catch { return value }
     }
 
     // the core dispatch function

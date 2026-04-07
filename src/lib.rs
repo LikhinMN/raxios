@@ -1,5 +1,6 @@
 mod error;
 
+use napi::bindgen_prelude::Either;
 use napi_derive::napi;
 use std::collections::HashMap;
 
@@ -15,7 +16,7 @@ fn get_client() -> &'static reqwest::Client {
 #[napi(object)]
 pub struct RaxiosResponse {
     pub status: u16,
-    pub data: String,
+    pub data: Either<String, napi::bindgen_prelude::Buffer>,
     pub headers: HashMap<String, String>,
 }
 #[napi]
@@ -25,6 +26,7 @@ pub async fn request(
     headers: Option<HashMap<String, String>>,
     body: Option<String>,
     timeout: Option<u32>,
+    response_type: Option<String>,
 ) -> napi::Result<RaxiosResponse> {
     let client = get_client();
     let mut req = match method.to_uppercase().as_str() {
@@ -77,17 +79,39 @@ pub async fn request(
         .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
         .collect();
 
-    let data = res
-        .text()
-        .await
-        .map_err(|e| napi::Error::new(napi::Status::GenericFailure, e.to_string()))?;
+    let response_type = response_type.as_deref().map(|value| value.to_ascii_lowercase());
+    let is_binary = matches!(
+        response_type.as_deref(),
+        Some("arraybuffer") | Some("buffer") | Some("blob") | Some("bytes")
+    );
+
+    let data = if is_binary {
+        let bytes = res
+            .bytes()
+            .await
+            .map_err(|e| napi::Error::new(napi::Status::GenericFailure, e.to_string()))?;
+        Either::B(bytes.to_vec().into())
+    } else {
+        let text = res
+            .text()
+            .await
+            .map_err(|e| napi::Error::new(napi::Status::GenericFailure, e.to_string()))?;
+        Either::A(text)
+    };
 
     if !is_success {
-        let error_obj = serde_json::json!({
-            "status": status,
-            "data": data,
-            "headers": headers,
-        });
+        let error_obj = match &data {
+            Either::A(text) => serde_json::json!({
+                "status": status,
+                "data": text,
+                "headers": headers,
+            }),
+            Either::B(_) => serde_json::json!({
+                "status": status,
+                "data": "[binary data]",
+                "headers": headers,
+            }),
+        };
         return Err(napi::Error::new(
             napi::Status::GenericFailure,
             error_obj.to_string(),
