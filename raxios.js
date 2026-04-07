@@ -73,9 +73,25 @@ function createInstance(defaults) {
                 config.timeout || null
             )
         } catch (e) {
-            const err = new Error(e.message)
-            err.code = e.message.includes('timeout') ? 'ECONNABORTED' : e.code
-            err.config = { ...config, url } // Include merged URL in error config
+            let err;
+            try {
+                // Try to parse error message as JSON (for response errors from Rust)
+                const errorData = JSON.parse(e.message)
+                err = new Error(`Request failed with status code ${errorData.status}`)
+                err.response = {
+                    status: errorData.status,
+                    data: tryParseJSON(errorData.data),
+                    headers: errorData.headers,
+                    config: { ...config, url }
+                }
+                err.status = errorData.status
+            } catch {
+                // Not a JSON error, likely a connection/timeout/generic error
+                err = new Error(e.message)
+                err.code = e.message.includes('timeout') ? 'ECONNABORTED' : e.code
+            }
+            
+            err.config = { ...config, url }
             err.isRaxiosError = true
             throw err
         }

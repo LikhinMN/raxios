@@ -69,8 +69,9 @@ pub async fn request(
         })?;
 
     let status = res.status().as_u16();
+    let is_success = res.status().is_success();
 
-    let headers = res
+    let headers: HashMap<String, String> = res
         .headers()
         .iter()
         .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
@@ -80,6 +81,18 @@ pub async fn request(
         .text()
         .await
         .map_err(|e| napi::Error::new(napi::Status::GenericFailure, e.to_string()))?;
+
+    if !is_success {
+        let error_obj = serde_json::json!({
+            "status": status,
+            "data": data,
+            "headers": headers,
+        });
+        return Err(napi::Error::new(
+            napi::Status::GenericFailure,
+            error_obj.to_string(),
+        ));
+    }
 
     Ok(RaxiosResponse {
         status,
