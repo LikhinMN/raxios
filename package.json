@@ -15,7 +15,7 @@
     "type": "git",
     "url": "git+https://github.com/LikhinMN/raxios.git"
   },
-  "main": "index.js",
+  "main": "raxios.js",
   "types": "index.d.ts",
   "scripts": {
     "build": "napi build --platform --release",
