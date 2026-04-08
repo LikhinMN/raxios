@@ -28,6 +28,14 @@ function createInstance(defaults) {
         response: new InterceptorManager(),
     }
 
+    const createAbortError = (config, url) => {
+        const err = new Error('Request canceled')
+        err.code = 'ERR_CANCELED'
+        err.config = { ...config, url }
+        err.isRaxiosError = true
+        return err
+    }
+
     async function dispatchRequest(config) {
         let url = config.url
         if (config.baseURL && !/^https?:\/\//i.test(url)) {
@@ -43,6 +51,10 @@ function createInstance(defaults) {
             if (queryString) {
                 url += (url.includes('?') ? '&' : '?') + queryString
             }
+        }
+
+        if (config.signal?.aborted) {
+            throw createAbortError(config, url)
         }
 
         let headers = { ...config.headers }
@@ -64,8 +76,15 @@ function createInstance(defaults) {
         const body = (data && typeof data === 'object') ? JSON.stringify(data) : data
 
         let res
+        let abortHandler
+        const abortPromise = config.signal
+            ? new Promise((_, reject) => {
+                abortHandler = () => reject(createAbortError(config, url))
+                config.signal.addEventListener('abort', abortHandler, { once: true })
+            })
+            : null
         try {
-            res = await request(
+            const requestPromise = request(
                 config.method,
                 url,
                 headers || null,
@@ -73,7 +92,11 @@ function createInstance(defaults) {
                 config.timeout || null,
                 config.responseType || null
             )
+            res = await (abortPromise ? Promise.race([requestPromise, abortPromise]) : requestPromise)
         } catch (e) {
+            if (e && e.code === 'ERR_CANCELED') {
+                throw e
+            }
             let err;
             try {
                 // Try to parse error message as JSON (for response errors from Rust)
@@ -95,6 +118,10 @@ function createInstance(defaults) {
             err.config = { ...config, url }
             err.isRaxiosError = true
             throw err
+        } finally {
+            if (config.signal && abortHandler) {
+                config.signal.removeEventListener('abort', abortHandler)
+            }
         }
 
         let responseData = tryParseJSON(res.data)
@@ -183,6 +210,7 @@ function createInstance(defaults) {
 
 const raxios = createInstance({ headers: { common: {} } })
 raxios.create = (config) => createInstance({ headers: {}, ...config })
+raxios.request = (config) => raxios(config)
 raxios.isRaxiosError = (err) => err?.isRaxiosError === true
 raxios.all = (promises) => Promise.all(promises)
 raxios.spread = (callback) => (arr) => callback(...arr)

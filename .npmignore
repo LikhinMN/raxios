@@ -1,0 +1,7 @@
+# Exclude Rust sources/build artifacts from npm package
+/src/
+/target/
+/Cargo.toml
+/Cargo.lock
+/build.rs
+

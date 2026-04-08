@@ -15,7 +15,7 @@
 
 **Error Handling Split**: Rust layer returns structured error objects as JSON strings in error messages. JavaScript layer (`raxios.js` lines 77-97) parses these to reconstruct `err.response` with `{status, data, headers}` and marks errors with `isRaxiosError = true`.
 
-**Data Type Duality**: `RaxiosResponse.data` in Rust is `Either<String, Buffer>` (lines 19), determined by `responseType` param. Binary types (`"arraybuffer"`, `"buffer"`, `"blob"`) return Buffers; text (default) returns strings. JavaScript side auto-parses JSON strings (line 100).
+**Data Type Duality**: `RaxiosResponse.data` in Rust is `Either<String, Buffer>` (lines 19), determined by `responseType` param. Binary types (`"arraybuffer"`, `"buffer"`, `"blob"`, `"bytes"`) return Buffers; text (default) returns strings. JavaScript side auto-parses JSON strings (line 100).
 
 **Interceptor Chain Pattern**: Interceptors implemented as promise chain reduction (raxios.js lines 148-151). Request interceptors prepended to chain, response interceptors appended. Each handler can transform or reject the promise.
 
@@ -30,9 +30,8 @@ NAPI-RS CLI handles platform detection and compilation. Binaries output to `raxi
 
 ### Testing
 ```bash
-node test.mjs                 # Full integration test suite
-node test_interceptors.mjs    # Interceptor-specific tests
-node test_binary_error.mjs    # Binary response + error handling
+npm test         # Vitest suite (tests/integration/*.test.mjs)
+npm run test:watch
 ```
 Tests are ESM modules using actual HTTP calls to httpbin.org and jsonplaceholder—not mocked. Tests validate status codes, headers, custom headers, and `create()` config inheritance.
 
@@ -56,7 +55,7 @@ Config fields are transformed to low-level params before native call (raxios.js 
 
 ### Response Parsing
 Rust side (lines 82-99):
-- Binary detection: `response_type` param checked for "arraybuffer" | "buffer" | "blob"
+- Binary detection: `response_type` param checked for "arraybuffer" | "buffer" | "blob" | "bytes"
 - Text auto-parsed as UTF-8; binary returned as-is
 - Headers collected into `HashMap<String, String>`
 
@@ -68,7 +67,7 @@ JavaScript side (lines 100-108):
 ### Error Flow
 1. **Rust error** → serialized as JSON in error message: `{"status": N, "data": "...", "headers": {}}`
 2. **JavaScript catches** → parses JSON, reconstructs `err.response` object
-3. **isRaxiosError flag** added for error type checking (raxios.js line 96, module.js line 180)
+3. **isRaxiosError flag** added for error type checking (raxios.js line 96)
 4. **Special timeout handling** (line 92): Connection errors get `code: 'ECONNABORTED'`
 
 ### Interceptor Execution Order
@@ -100,7 +99,6 @@ Promise chain is built with request interceptors unshifted (prepended) and respo
 
 **Adding request/response transform hooks**: Config fields already passed through (transformRequest, transformResponse). Add execution in dispatchRequest before/after native call (raxios.js lines 55-62, 101-108).
 
-**Binary data handling**: Response type "arraybuffer" | "buffer" | "blob" triggers binary path in Rust (line 82-92). JavaScript receives Buffer object directly—no parsing needed.
+**Binary data handling**: Response type "arraybuffer" | "buffer" | "blob" | "bytes" triggers binary path in Rust (line 82-92). JavaScript receives Buffer object directly—no parsing needed.
 
-**Testing new features**: Use test scripts in root (test.mjs pattern). Tests hit real endpoints—validate status and data structure. No mocking framework; add console.log for debugging.
-
+**Testing new features**: Use the Vitest suite under `tests/integration/*.test.mjs` (e.g., `tests/integration/basic.test.mjs`). Tests hit real endpoints—validate status and data structure. No mocking framework; add console.log for debugging.

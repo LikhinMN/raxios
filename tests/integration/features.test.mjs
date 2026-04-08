@@ -55,6 +55,22 @@ describe('feature coverage', () => {
     }
   })
 
+  it('aborts requests with AbortController', async () => {
+    const controller = new AbortController()
+    const promise = raxios.get('https://httpbin.org/delay/3', {
+      signal: controller.signal
+    })
+    setTimeout(() => controller.abort(), 100)
+
+    try {
+      await promise
+      throw new Error('Expected abort')
+    } catch (err) {
+      expect(err.code).toBe('ERR_CANCELED')
+      expect(err.isRaxiosError).toBe(true)
+    }
+  })
+
   it('respects defaults.headers.common', async () => {
     const api = raxios.create({ headers: { common: {} } })
     api.defaults.headers.common['X-Common'] = 'common-value'
@@ -84,4 +100,3 @@ describe('feature coverage', () => {
     expect(spreadResult).toBe('12')
   })
 })
-

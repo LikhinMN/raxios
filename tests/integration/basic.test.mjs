@@ -33,5 +33,13 @@ describe('basic requests', () => {
     const res = await api.get('/get')
     expect(res.status).toBe(200)
   })
-})
 
+  it('request(config) sends a request', async () => {
+    const res = await raxios.request({
+      method: 'GET',
+      url: 'https://httpbin.org/get'
+    })
+    expect(res.status).toBe(200)
+    expect(res.data.url).toContain('https://httpbin.org/get')
+  })
+})

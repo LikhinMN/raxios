@@ -3,6 +3,7 @@ mod error;
 use napi::bindgen_prelude::Either;
 use napi_derive::napi;
 use std::collections::HashMap;
+use crate::error::RaxiosError;
 
 use std::sync::OnceLock;
 use std::time::Duration;
@@ -63,11 +64,10 @@ pub async fn request(
         .send()
         .await
         .map_err(|e| {
-            if e.is_timeout() {
-                napi::Error::new(napi::Status::GenericFailure, format!("timeout of {}ms exceeded", timeout.unwrap_or(0)))
-            } else {
-                napi::Error::new(napi::Status::GenericFailure, e.to_string())
-            }
+            napi::Error::new(
+                napi::Status::GenericFailure,
+                RaxiosError::from(e).to_string(),
+            )
         })?;
 
     let status = res.status().as_u16();
@@ -89,13 +89,13 @@ pub async fn request(
         let bytes = res
             .bytes()
             .await
-            .map_err(|e| napi::Error::new(napi::Status::GenericFailure, e.to_string()))?;
+            .map_err(|e| napi::Error::new(napi::Status::GenericFailure, RaxiosError::from(e).to_string()))?;
         Either::B(bytes.to_vec().into())
     } else {
         let text = res
             .text()
             .await
-            .map_err(|e| napi::Error::new(napi::Status::GenericFailure, e.to_string()))?;
+            .map_err(|e| napi::Error::new(napi::Status::GenericFailure, RaxiosError::from(e).to_string()))?;
         Either::A(text)
     };
 

@@ -32,7 +32,7 @@ impl From<reqwest::Error> for RaxiosError {
 impl fmt::Display for RaxiosError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            RaxiosError::Timeout(msg) => write!(f, "Timeout: {}", msg),
+            RaxiosError::Timeout(msg) => write!(f, "timeout: {}", msg),
             RaxiosError::Connection(msg) => write!(f, "Connection error: {}", msg),
             RaxiosError::InvalidUrl(msg) => write!(f, "Invalid URL: {}", msg),
             RaxiosError::Parsing(msg) => write!(f, "Parsing error: {}", msg),
