@@ -12,6 +12,9 @@ Cargo.lock
 AGENTS.md
 skills-lock.json
 
+#github
+.github/
+
 # Dev
 tests/
 vitest.config.js
