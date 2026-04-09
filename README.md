@@ -5,13 +5,25 @@ Raxios is a Node.js HTTP client built with Rust + NAPI-RS. It wraps `reqwest` an
 ## Install
 
 ```bash
-npm install raxios
+npm install @likhinmn/raxios
 ```
 
 ## Quick start
 
+ESM:
+
 ```js
-import raxios from 'raxios'
+import raxios from '@likhinmn/raxios'
+
+const res = await raxios.get('https://httpbin.org/get')
+console.log(res.status)
+console.log(res.data)
+```
+
+CommonJS:
+
+```js
+const raxios = require('@likhinmn/raxios')
 
 const res = await raxios.get('https://httpbin.org/get')
 console.log(res.status)
