@@ -10,7 +10,7 @@
     "napi-rs",
     "rust"
   ],
-  "license": "UNLICENSED",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/LikhinMN/raxios.git"
