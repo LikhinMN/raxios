@@ -13,11 +13,11 @@
 
 **OnceLock HTTP Client**: `src/lib.rs` uses `static CLIENT: OnceLock<reqwest::Client>` to maintain a global, thread-safe connection pool. The client is initialized once on first request—do not create new clients per request.
 
-**Error Handling Split**: Rust layer returns structured error objects as JSON strings in error messages. JavaScript layer (`raxios.js` lines 77-97) parses these to reconstruct `err.response` with `{status, data, headers}` and marks errors with `isRaxiosError = true`.
+**Error Handling Split**: Non-2xx responses are serialized as JSON strings in Rust error messages. JavaScript (`raxios.js` around lines 96-120) parses these to reconstruct `err.response` with `{status, data, headers}` and always marks errors with `isRaxiosError = true`. Transport/timeout errors come through as `RaxiosError` strings from Rust and are mapped to `err.code` in JS.
 
-**Data Type Duality**: `RaxiosResponse.data` in Rust is `Either<String, Buffer>` (lines 19), determined by `responseType` param. Binary types (`"arraybuffer"`, `"buffer"`, `"blob"`, `"bytes"`) return Buffers; text (default) returns strings. JavaScript side auto-parses JSON strings (line 100).
+**Data Type Duality**: `RaxiosResponse.data` in Rust is `Either<String, Buffer>` (lines 18-21), determined by `responseType` param. Binary types (`"arraybuffer"`, `"buffer"`, `"blob"`, `"bytes"`) return Buffers; text (default) returns strings. JavaScript side (`tryParseJSON` around lines 145-154) passes Buffers through and attempts JSON.parse on strings.
 
-**Interceptor Chain Pattern**: Interceptors implemented as promise chain reduction (raxios.js lines 148-151). Request interceptors prepended to chain, response interceptors appended. Each handler can transform or reject the promise.
+**Interceptor Chain Pattern**: Interceptors implemented as promise chain reduction (raxios.js around lines 167-184). Request interceptors prepended to chain, response interceptors appended. Each handler can transform or reject the promise.
 
 ## Development Workflow
 
@@ -43,15 +43,16 @@ Tests are ESM modules using actual HTTP calls to httpbin.org and jsonplaceholder
 ## Critical Implementation Details
 
 ### HTTP Method Routing
-`src/lib.rs` line 32-46: Method string matched case-insensitively against uppercase ("GET", "POST", etc.). Unknown methods return `napi::Status::GenericFailure` error.
+`src/lib.rs` line 33-40: Method string matched case-insensitively against uppercase ("GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"). Unknown methods return `napi::Status::GenericFailure` error.
 
 ### Request Building
-Config fields are transformed to low-level params before native call (raxios.js lines 31-46):
+Config fields are transformed to low-level params before native call (raxios.js around lines 39-95):
 - **baseURL** + **params**: URL construction with query strings
 - **headers**: Merged from defaults + instance defaults + request config
-- **data**: Auto-serialized to JSON if object and no Content-Type header set
+- **data**: Objects are JSON-serialized before native call; `Content-Type: application/json` is added only if not already set
 - **transformRequest**: Applied before sending (user-defined transforms)
 - **timeout**: Milliseconds converted to Duration in Rust (line 49)
+- **signal**: AbortController-supported; abort rejects with `code: 'ERR_CANCELED'` before or during the native call
 
 ### Response Parsing
 Rust side (lines 82-99):
@@ -59,16 +60,16 @@ Rust side (lines 82-99):
 - Text auto-parsed as UTF-8; binary returned as-is
 - Headers collected into `HashMap<String, String>`
 
-JavaScript side (lines 100-108):
+JavaScript side (lines 127-143):
 - Binary Buffers passed through
 - Strings attempted JSON.parse, fallback to raw string
 - **transformResponse** hook applied after parse
 
 ### Error Flow
-1. **Rust error** → serialized as JSON in error message: `{"status": N, "data": "...", "headers": {}}`
-2. **JavaScript catches** → parses JSON, reconstructs `err.response` object
-3. **isRaxiosError flag** added for error type checking (raxios.js line 96)
-4. **Special timeout handling** (line 92): Connection errors get `code: 'ECONNABORTED'`
+1. **Rust non-2xx** → serialized as JSON in error message: `{"status": N, "data": "...", "headers": {}}`
+2. **JavaScript catches** → parses JSON, reconstructs `err.response` object, sets `err.status`
+3. **Transport/timeout** → JS uses Rust error text; timeout is mapped to `code: 'ECONNABORTED'` when the message includes "timeout"
+4. **AbortController** → JS throws early with `code: 'ERR_CANCELED'` and `isRaxiosError = true`
 
 ### Interceptor Execution Order
 ```
@@ -78,13 +79,13 @@ dispatchRequest (native HTTP call)
   ↓
 Response Interceptors (in registration order)
 ```
-Promise chain is built with request interceptors unshifted (prepended) and response interceptors pushed (appended), then reduced via Promise.then() chain (raxios.js lines 138-145).
+Promise chain is built with request interceptors unshifted (prepended) and response interceptors pushed (appended), then reduced via Promise.then() chain (raxios.js around lines 167-184).
 
 ## File Reference
 
 - **`src/lib.rs`**: NAPI Rust bindings, HTTP request handler, response marshalling
-- **`src/error.rs`**: Unused in current build (error.rs exported enum not exposed via NAPI)
-- **`raxios.js`**: Main JavaScript API, interceptor logic, config merging, error parsing
+- **`src/error.rs`**: Reqwest error mapping for Rust-side `RaxiosError`
+- **`raxios.js`**: Main JavaScript API, interceptor logic, config merging, error parsing, AbortController handling
 - **`index.js`**: Platform-specific native binding loader (auto-generated by NAPI-RS)
 - **`index.d.ts`**: TypeScript type definitions (auto-generated)
 - **`Cargo.toml`**: Rust dependencies (napi, reqwest, tokio, serde)
@@ -93,12 +94,14 @@ Promise chain is built with request interceptors unshifted (prepended) and respo
 
 ## Common Patterns for Agents
 
-**Adding a new HTTP method**: Add case to method router in `src/lib.rs` line 32, add `.method()` shortcut to raxios.js line 163+ instance object.
+**Adding a new HTTP method**: Add case to method router in `src/lib.rs` line 33, add `.method()` shortcut to raxios.js line 199+ instance object.
 
-**Modifying error handling**: Update JSON error serialization in `src/lib.rs` lines 102-113, then update JavaScript parsing in raxios.js lines 78-93.
+**Modifying error handling**: Update JSON error serialization in `src/lib.rs` lines 102-117, then update JavaScript parsing in raxios.js around lines 96-120.
 
-**Adding request/response transform hooks**: Config fields already passed through (transformRequest, transformResponse). Add execution in dispatchRequest before/after native call (raxios.js lines 55-62, 101-108).
+**Adding request/response transform hooks**: Config fields already passed through (transformRequest, transformResponse). Add execution in dispatchRequest before/after native call (raxios.js lines 67-135).
 
 **Binary data handling**: Response type "arraybuffer" | "buffer" | "blob" | "bytes" triggers binary path in Rust (line 82-92). JavaScript receives Buffer object directly—no parsing needed.
+
+**Abortable requests**: Pass `signal` in request config; JS races the native request against the abort signal and returns `code: 'ERR_CANCELED'` on cancellation (raxios.js lines 80-99).
 
 **Testing new features**: Use the Vitest suite under `tests/integration/*.test.mjs` (e.g., `tests/integration/basic.test.mjs`). Tests hit real endpoints—validate status and data structure. No mocking framework; add console.log for debugging.
