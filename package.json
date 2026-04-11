@@ -1,6 +1,6 @@
 {
   "name": "@likhinmn/raxios",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Axios-like HTTP client for Node.js backed by Rust reqwest via NAPI-RS",
   "keywords": [
     "http",
