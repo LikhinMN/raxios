@@ -263,6 +263,11 @@ console.log(res.data.name)
 - Node.js only (no browser build).
 - Axios-like API surface: `get`, `post`, `put`, `patch`, `delete`, `head`, `options`, `create`, `request`.
 - Rust core uses a shared connection pool for efficient reuse.
+- **Entrypoints**:
+  - `raxios.js` is the Node.js entrypoint using the Rust dispatcher from `index.js`.
+  - `raxios.browser.js` is the browser entrypoint using the shared fetch dispatcher.
+  - `raxios.core.js` exports shared building blocks (`createInstance`, `fetchDispatcher`) used by both entrypoints.
+- **Browser field behavior**: bundlers that honor `package.json#browser` will resolve to `raxios.browser.js` automatically, while Node.js resolves to `raxios.js`.
 
 ## License
 
