@@ -53,12 +53,14 @@ Config fields are transformed to low-level params before native call (raxios.js 
 - **transformRequest**: Applied before sending (user-defined transforms)
 - **timeout**: Milliseconds converted to Duration in Rust (line 49)
 - **signal**: AbortController-supported; abort rejects with `code: 'ERR_CANCELED'` before or during the native call
+- **`raxios(config)` / `raxios.request(config)`**: Always dispatches `GET` and ignores `config.method`; use method helpers (e.g., `.post()`, `.put()`) for non-GET requests
 
 ### Response Parsing
 Rust side (lines 82-99):
 - Binary detection: `response_type` param checked for "arraybuffer" | "buffer" | "blob" | "bytes"
 - Text auto-parsed as UTF-8; binary returned as-is
 - Headers collected into `HashMap<String, String>`
+- Non-binary `responseType` values (including `"json"`) follow the text path and are parsed in JS
 
 JavaScript side (lines 127-143):
 - Binary Buffers passed through

@@ -17,6 +17,7 @@
   },
   "main": "raxios.js",
   "types": "index.d.ts",
+  "browser": "raxios.browser.js",
   "scripts": {
     "build": "napi build --platform --release",
     "build:debug": "napi build --platform",
