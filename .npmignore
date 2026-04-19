@@ -17,6 +17,7 @@ skills-lock.json
 
 # Dev
 tests/
+benchmarks/
 vitest.config.js
 test.mjs
 test_interceptors.mjs
