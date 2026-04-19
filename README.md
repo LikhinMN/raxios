@@ -1,246 +1,362 @@
 # @likhinmn/raxios
 
-Fast, axios-compatible HTTP client for Node.js built on Rust.
+Fast, axios-compatible HTTP client for Node.js and browsers, built on Rust.
 
-Raxios wraps `reqwest` via NAPI-RS and exposes an axios-like API with a Rust-powered HTTP core.
+[![npm](https://img.shields.io/npm/v/@likhinmn/raxios?style=flat-square)](https://www.npmjs.com/package/@likhinmn/raxios)
+[![license](https://img.shields.io/npm/l/@likhinmn/raxios?style=flat-square)](LICENSE)
+![platform-linux](https://img.shields.io/badge/platform-linux-2ea44f?style=flat-square)
+![platform-macos](https://img.shields.io/badge/platform-macos-2ea44f?style=flat-square)
+![platform-windows](https://img.shields.io/badge/platform-windows-2ea44f?style=flat-square)
+
+## Why raxios
+
+- Rust core via `reqwest` for consistent, fast HTTP.
+- Axios-style API with interceptors, transforms, and defaults.
+- Cross-platform native binaries for Linux, Windows, and macOS.
+- Browser support via `fetch` with zero-config bundler resolution.
+
+## Install
 
 ```bash
 npm install @likhinmn/raxios
+yarn add @likhinmn/raxios
+pnpm add @likhinmn/raxios
 ```
 
 Supported platforms: Linux x64, Windows x64, macOS x64, macOS arm64.
 
-## Table of Contents
-
-- [Quick Start](#quick-start)
-- [API Overview](#api-overview)
-- [Request Config](#request-config)
-- [Response Object](#response-object)
-- [Instances and Defaults](#instances-and-defaults)
-- [Interceptors](#interceptors)
-- [Transforms](#transforms)
-- [Error Handling](#error-handling)
-- [Binary Responses](#binary-responses)
-- [Concurrency Helpers](#concurrency-helpers)
-- [TypeScript](#typescript)
-- [Compatibility Notes](#compatibility-notes)
-
-## Quick Start
+## Quick start
 
 ```js
 // ESM
 import raxios from '@likhinmn/raxios'
 
-// CommonJS
-const raxios = require('@likhinmn/raxios')
-
-const res = await raxios.get('https://api.example.com/users')
+const res = await raxios.get('https://jsonplaceholder.typicode.com/users/1')
 console.log(res.status)
 console.log(res.data)
 ```
 
-## API Overview
+```js
+// CommonJS
+const raxios = require('@likhinmn/raxios')
 
-Raxios exposes a callable instance with axios-style helpers:
+const res = await raxios.get('https://jsonplaceholder.typicode.com/posts/1')
+console.log(res.status)
+console.log(res.data)
+```
 
-- `raxios(config)` or `raxios.request(config)`
-- `raxios.get(url, config)`
-- `raxios.post(url, data, config)`
-- `raxios.put(url, data, config)`
-- `raxios.patch(url, data, config)`
-- `raxios.delete(url, config)`
-- `raxios.head(url, config)`
-- `raxios.options(url, config)`
-- `raxios.create(config)`
+## Browser usage
 
-Note: `raxios(config)` and `raxios.request(config)` currently default to `GET` and do not honor a custom `method`. Use the method helpers for non-GET requests.
-
-Examples:
+Bundlers that honor `package.json#browser` (Vite, webpack, Rollup) automatically resolve to `raxios.browser.js`, which uses the fetch dispatcher.
 
 ```js
-const users = await raxios.get('https://api.example.com/users')
+import raxios from '@likhinmn/raxios'
 
-const created = await raxios.post('https://api.example.com/users', {
-  name: 'Likhin',
-  email: 'likhin@example.com'
+const res = await raxios.get('https://httpbin.org/get')
+console.log(res.data.url)
+```
+
+No config is required; ensure `fetch` is available in the target runtime.
+
+## Full API reference
+
+Each method returns a `Promise<RaxiosResponse>` unless otherwise noted.
+
+### raxios(config)
+
+- **Params**: `config: RaxiosConfig`
+- **Returns**: `Promise<RaxiosResponse>`
+- **Note**: Defaults to `GET` and does not honor `config.method`
+
+```js
+const res = await raxios({
+  url: 'https://httpbin.org/get',
+  params: { q: 'raxios' }
 })
+console.log(res.data.args.q)
+```
 
-const removed = await raxios.delete('https://api.example.com/users/1')
+### raxios.request(config)
 
-const head = await raxios.head('https://api.example.com/users/1')
-const options = await raxios.options('https://api.example.com/users')
+- **Params**: `config: RaxiosConfig`
+- **Returns**: `Promise<RaxiosResponse>`
+- **Note**: Defaults to `GET` and does not honor `config.method`
 
-const byConfig = await raxios.request({
-  method: 'GET',
-  url: 'https://api.example.com/users',
-  params: { page: 1, limit: 10 }
+```js
+const res = await raxios.request({
+  url: 'https://httpbin.org/get',
+  params: { page: 1 }
 })
+console.log(res.data.args.page)
 ```
 
-## Request Config
+### raxios.get(url, config)
+
+- **Params**: `url: string`, `config?: RaxiosConfig`
+- **Returns**: `Promise<RaxiosResponse>`
 
 ```js
-{
-  url: 'https://api.example.com/users',
-  method: 'POST',
-  baseURL: 'https://api.example.com',
-  headers: {
-    Authorization: 'Bearer token',
-    'X-Custom-Header': 'value'
-  },
-  params: {
-    page: 1,
-    limit: 10
-  },
-  data: {
-    name: 'Likhin'
-  },
-  timeout: 5000,
-  responseType: 'arraybuffer',
-  signal: abortController.signal,
-  transformRequest: [(data, headers) => data],
-  transformResponse: [(data) => data]
-}
+const res = await raxios.get('https://jsonplaceholder.typicode.com/posts/1')
+console.log(res.data.title)
 ```
 
-Notes:
-- Objects are JSON-serialized before the native call. If no `Content-Type` header is provided, `application/json` is set automatically.
-- `baseURL` is prepended when `url` is relative.
-- `params` are URL-encoded and appended to the final URL.
-- `signal` supports AbortController. Aborted requests reject with `code: 'ERR_CANCELED'` and `isRaxiosError: true`.
+### raxios.post(url, data, config)
 
-## Response Object
+- **Params**: `url: string`, `data: any`, `config?: RaxiosConfig`
+- **Returns**: `Promise<RaxiosResponse>`
 
 ```js
-const res = await raxios.get('https://api.example.com/users/1')
-
-res.data
-res.status
-res.headers
-res.config
+const res = await raxios.post(
+  'https://httpbin.org/post',
+  { name: 'Raxios' }
+)
+console.log(res.data.json.name)
 ```
 
-## Instances and Defaults
+### raxios.put(url, data, config)
+
+- **Params**: `url: string`, `data: any`, `config?: RaxiosConfig`
+- **Returns**: `Promise<RaxiosResponse>`
+
+```js
+const res = await raxios.put(
+  'https://httpbin.org/put',
+  { name: 'Updated' }
+)
+console.log(res.data.json.name)
+```
+
+### raxios.patch(url, data, config)
+
+- **Params**: `url: string`, `data: any`, `config?: RaxiosConfig`
+- **Returns**: `Promise<RaxiosResponse>`
+
+```js
+const res = await raxios.patch(
+  'https://httpbin.org/patch',
+  { status: 'active' }
+)
+console.log(res.data.json.status)
+```
+
+### raxios.delete(url, config)
+
+- **Params**: `url: string`, `config?: RaxiosConfig`
+- **Returns**: `Promise<RaxiosResponse>`
+
+```js
+const res = await raxios.delete('https://httpbin.org/delete')
+console.log(res.status)
+```
+
+### raxios.head(url, config)
+
+- **Params**: `url: string`, `config?: RaxiosConfig`
+- **Returns**: `Promise<RaxiosResponse>`
+
+```js
+const res = await raxios.head('https://httpbin.org/get')
+console.log(res.headers['content-type'])
+```
+
+### raxios.options(url, config)
+
+- **Params**: `url: string`, `config?: RaxiosConfig`
+- **Returns**: `Promise<RaxiosResponse>`
+
+```js
+const res = await raxios.options('https://httpbin.org/get')
+console.log(res.headers.allow)
+```
+
+### raxios.create(config)
+
+- **Params**: `config: RaxiosConfig`
+- **Returns**: `RaxiosInstance`
 
 ```js
 const api = raxios.create({
-  baseURL: 'https://api.example.com',
-  timeout: 10000,
-  headers: {
-    Authorization: `Bearer ${process.env.API_TOKEN}`,
-    Accept: 'application/json'
-  }
+  baseURL: 'https://jsonplaceholder.typicode.com',
+  timeout: 5000
 })
 
-const users = await api.get('/users')
-const user = await api.get('/users/1')
-const res = await api.post('/users', { name: 'Likhin' })
+const res = await api.get('/users/1')
+console.log(res.data.email)
 ```
 
-Set defaults on the global instance or per instance:
+### raxios.isRaxiosError(err)
+
+- **Params**: `err: unknown`
+- **Returns**: `boolean`
 
 ```js
-raxios.defaults.headers.common.Authorization = `Bearer ${token}`
-raxios.defaults.timeout = 5000
-
-const api = raxios.create({ baseURL: 'https://api.example.com' })
-api.defaults.headers.common['X-App-Version'] = '1.0.0'
+try {
+  await raxios.get('https://httpbin.org/status/404')
+} catch (err) {
+  if (raxios.isRaxiosError(err)) {
+    console.log(err.status)
+  }
+}
 ```
 
-Header merge order (highest priority wins):
+### raxios.all(promises)
 
+- **Params**: `promises: Promise[]`
+- **Returns**: `Promise<any[]>`
+
+```js
+const [users, posts] = await raxios.all([
+  raxios.get('https://jsonplaceholder.typicode.com/users'),
+  raxios.get('https://jsonplaceholder.typicode.com/posts')
+])
+console.log(users.data.length, posts.data.length)
 ```
-raxios.defaults.headers.common
-+ instance config headers
-+ per-call headers
+
+### raxios.spread(callback)
+
+- **Params**: `callback: (...args: any[]) => any`
+- **Returns**: `(...args: any[]) => any`
+
+```js
+await raxios
+  .all([
+    raxios.get('https://jsonplaceholder.typicode.com/users/1'),
+    raxios.get('https://jsonplaceholder.typicode.com/posts/1')
+  ])
+  .then(raxios.spread((user, post) => {
+    console.log(user.data.name)
+    console.log(post.data.title)
+  }))
 ```
+
+## Request config
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `url` | `string` | required | Request URL (absolute or relative if `baseURL` is set). |
+| `method` | `string` | `GET` | HTTP method for method helpers; ignored by `raxios(config)` and `raxios.request(config)`. |
+| `baseURL` | `string` | `undefined` | Prepended to `url` when `url` is relative. |
+| `headers` | `Record<string, string>` | `{}` | Merged with defaults and per-request headers. |
+| `params` | `Record<string, string \| number \| boolean>` | `undefined` | Serialized into the query string. |
+| `data` | `any` | `undefined` | Request body; objects are JSON-serialized. |
+| `timeout` | `number` | `undefined` | Timeout in milliseconds. |
+| `responseType` | `'json' \| 'arraybuffer' \| 'buffer' \| 'blob' \| 'bytes'` | `json` | Controls binary/text response parsing. |
+| `transformRequest` | `Function \| Function[]` | `undefined` | Run before the request is dispatched. |
+| `transformResponse` | `Function \| Function[]` | `undefined` | Run after the response is parsed. |
+| `signal` | `AbortSignal` | `undefined` | Cancels requests with `AbortController`. |
+
+## Response object
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `data` | `any` | Parsed response body. |
+| `status` | `number` | HTTP status code. |
+| `headers` | `Record<string, string>` | Response headers. |
+| `config` | `RaxiosConfig` | Final request config (includes resolved `url`). |
+
+## Error handling
+
+Raxios throws for non-2xx responses, transport errors, timeouts, and cancellations, and tags all errors with `isRaxiosError`.
+
+```js
+try {
+  await raxios.get('https://httpbin.org/status/404')
+} catch (err) {
+  if (raxios.isRaxiosError(err)) {
+    console.log(err.message)
+    console.log(err.status)
+    console.log(err.response?.data)
+    console.log(err.code)
+  }
+}
+```
+
+Error details:
+- Non-2xx responses include `err.response` with `{ status, data, headers }` and set `err.status`.
+- Timeouts map to `err.code = 'ECONNABORTED'` when the underlying error message includes "timeout".
+- AbortController cancellations throw with `err.code = 'ERR_CANCELED'`.
+- Other transport errors may include `err.code` from the runtime.
 
 ## Interceptors
 
 ```js
-const api = raxios.create({ baseURL: 'https://api.example.com' })
+const api = raxios.create({ baseURL: 'https://httpbin.org' })
 
-api.interceptors.request.use(
-  (config) => {
-    config.headers.Authorization = `Bearer ${getToken()}`
-    return config
-  },
-  (error) => Promise.reject(error)
-)
+api.interceptors.request.use((config) => {
+  config.headers.Authorization = `Bearer ${process.env.TOKEN || 'demo'}`
+  return config
+})
 
 api.interceptors.response.use(
   (response) => response,
-  (error) => Promise.reject(error)
+  async (error) => {
+    if (error.status === 401) {
+      const tokenRes = await raxios.get('https://httpbin.org/uuid')
+      const token = tokenRes.data.uuid
+      return api.get('/anything', {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+    }
+    return Promise.reject(error)
+  }
 )
 
 const id = api.interceptors.request.use((config) => config)
 api.interceptors.request.eject(id)
 ```
 
-## Transforms
+## Binary responses
+
+| responseType | Output |
+| --- | --- |
+| `json` | Parsed JSON (default) |
+| `arraybuffer` | `ArrayBuffer` (browser) / `Buffer` (Node) |
+| `buffer` | `Buffer` (Node) / `Buffer` if available (browser) |
+| `blob` | `Blob` (browser) / `Buffer` (Node) |
+| `bytes` | `Uint8Array` (browser) / `Buffer` (Node) |
 
 ```js
-const api = raxios.create({
-  transformRequest: [
-    (data, headers) => data
-  ],
-  transformResponse: [
-    (data) => data
-  ]
+const res = await raxios.get('https://httpbin.org/image/png', {
+  responseType: 'arraybuffer'
 })
+console.log(res.data.byteLength)
 ```
 
-## Error Handling
-
-Raxios throws for non-2xx responses, network errors, timeouts, and cancellations. All errors are tagged with `isRaxiosError`.
+## AbortController
 
 ```js
+const controller = new AbortController()
+
+setTimeout(() => controller.abort(), 50)
+
 try {
-  await raxios.get('https://api.example.com/users/999')
+  await raxios.get('https://httpbin.org/delay/5', {
+    signal: controller.signal
+  })
 } catch (err) {
   if (raxios.isRaxiosError(err)) {
-    console.log(err.message)
-    console.log(err.status)
-    console.log(err.response?.data)
-    console.log(err.config)
     console.log(err.code)
   }
 }
 ```
 
-Error behavior details:
-- Non-2xx responses include `err.response` with `{ status, data, headers }` and set `err.status`.
-- Timeouts map to `err.code = 'ECONNABORTED'` when the underlying error message includes "timeout".
-- AbortController cancellations throw with `err.code = 'ERR_CANCELED'`.
-- Other transport errors may set `err.code` if provided by the underlying runtime.
-
-## Binary Responses
-
-```js
-const res = await raxios.get('https://example.com/image.png', {
-  responseType: 'arraybuffer'
-})
-
-console.log(Buffer.isBuffer(res.data))
-```
-
-Supported `responseType` values: `json` (default), `arraybuffer`, `buffer`, `blob`, `bytes`.
-
-## Concurrency Helpers
+## Concurrent requests
 
 ```js
 const [users, posts] = await raxios.all([
-  raxios.get('https://api.example.com/users'),
-  raxios.get('https://api.example.com/posts')
+  raxios.get('https://jsonplaceholder.typicode.com/users'),
+  raxios.get('https://jsonplaceholder.typicode.com/posts')
 ])
 
-await raxios.all([
-  raxios.get('/users'),
-  raxios.get('/posts')
-]).then(raxios.spread((users, posts) => {
-  console.log(users.data)
-  console.log(posts.data)
-}))
+await raxios
+  .all([
+    raxios.get('https://jsonplaceholder.typicode.com/users/1'),
+    raxios.get('https://jsonplaceholder.typicode.com/posts/1')
+  ])
+  .then(raxios.spread((user, post) => {
+    console.log(user.data.name)
+    console.log(post.data.title)
+  }))
 ```
 
 ## TypeScript
@@ -254,20 +370,36 @@ interface User {
   email: string
 }
 
-const res = await raxios.get<User>('/users/1')
+const res = await raxios.get<User>('https://jsonplaceholder.typicode.com/users/1')
 console.log(res.data.name)
 ```
 
-## Compatibility Notes
+## vs axios
 
-- Node.js only (no browser build).
-- Axios-like API surface: `get`, `post`, `put`, `patch`, `delete`, `head`, `options`, `create`, `request`.
-- Rust core uses a shared connection pool for efficient reuse.
-- **Entrypoints**:
-  - `raxios.js` is the Node.js entrypoint using the Rust dispatcher from `index.js`.
-  - `raxios.browser.js` is the browser entrypoint using the shared fetch dispatcher.
-  - `raxios.core.js` exports shared building blocks (`createInstance`, `fetchDispatcher`) used by both entrypoints.
-- **Browser field behavior**: bundlers that honor `package.json#browser` will resolve to `raxios.browser.js` automatically, while Node.js resolves to `raxios.js`.
+| Feature | raxios | axios |
+| --- | --- | --- |
+| Core | Rust (`reqwest`) + NAPI | JavaScript (Node http / fetch) |
+| Browser support | Yes (via `fetch` entrypoint) | Yes |
+| Native binaries | Yes (Linux/Windows/macOS) | No |
+| API surface | Axios-style helpers and interceptors | Axios-style helpers and interceptors |
+| `raxios(config)` method behavior | Always `GET` | Honors `method` |
+| Binary response helpers | `responseType` (`arraybuffer`, `buffer`, `blob`, `bytes`) | `responseType` support |
+
+## Contributing
+
+Build locally:
+
+```bash
+npm run build
+npm run build:debug
+```
+
+Run tests:
+
+```bash
+npm test
+npm run test:watch
+```
 
 ## License
 

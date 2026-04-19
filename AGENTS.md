@@ -4,20 +4,21 @@
 
 ## Architecture Overview
 
-### The Three-Layer Stack
+### The Four-Layer Stack
 1. **Rust Core** (`src/lib.rs`): Low-level HTTP client using `reqwest` + `tokio`. Exposes a single async function: `request(method, url, headers?, body?, timeout?, responseType?)` via NAPI-RS.
 2. **Native Binding** (`index.js`): Auto-generated platform-specific loader that selects `.node` binary based on OS/arch (Linux GNU/musl, macOS universal, Windows MSVC, etc.).
-3. **JavaScript Wrapper** (`raxios.js`): Thin wrapper over raw native binding that adds axios-like API (methods: `.get()`, `.post()`, `.create()`, interceptors, config transforms).
+3. **Shared JavaScript Core** (`raxios.core.js`): Houses `createInstance`, interceptors, `tryParseJSON`, and the `fetchDispatcher` used by browser builds.
+4. **JavaScript Entrypoints**: `raxios.js` (Node.js, Rust dispatcher) and `raxios.browser.js` (browser, fetch dispatcher via `package.json#browser`).
 
 ### Key Design Patterns
 
 **OnceLock HTTP Client**: `src/lib.rs` uses `static CLIENT: OnceLock<reqwest::Client>` to maintain a global, thread-safe connection pool. The client is initialized once on first request—do not create new clients per request.
 
-**Error Handling Split**: Non-2xx responses are serialized as JSON strings in Rust error messages. JavaScript (`raxios.js` around lines 96-120) parses these to reconstruct `err.response` with `{status, data, headers}` and always marks errors with `isRaxiosError = true`. Transport/timeout errors come through as `RaxiosError` strings from Rust and are mapped to `err.code` in JS.
+**Error Handling Split**: Non-2xx responses are serialized as JSON strings in Rust error messages. JavaScript (`raxios.js` around lines 72-96) parses these to reconstruct `err.response` with `{status, data, headers}` and always marks errors with `isRaxiosError = true`. Transport/timeout errors come through as `RaxiosError` strings from Rust and are mapped to `err.code` in JS.
 
-**Data Type Duality**: `RaxiosResponse.data` in Rust is `Either<String, Buffer>` (lines 18-21), determined by `responseType` param. Binary types (`"arraybuffer"`, `"buffer"`, `"blob"`, `"bytes"`) return Buffers; text (default) returns strings. JavaScript side (`tryParseJSON` around lines 145-154) passes Buffers through and attempts JSON.parse on strings.
+**Data Type Duality**: `RaxiosResponse.data` in Rust is `Either<String, Buffer>` (lines 18-21), determined by `responseType` param. Binary types (`"arraybuffer"`, `"buffer"`, `"blob"`, `"bytes"`) return Buffers; text (default) returns strings. JavaScript side (`tryParseJSON` in `raxios.core.js` around lines 92-102) passes Buffers through and attempts JSON.parse on strings.
 
-**Interceptor Chain Pattern**: Interceptors implemented as promise chain reduction (raxios.js around lines 167-184). Request interceptors prepended to chain, response interceptors appended. Each handler can transform or reject the promise.
+**Interceptor Chain Pattern**: Interceptors implemented as promise chain reduction (`raxios.core.js` around lines 292-305). Request interceptors prepended to chain, response interceptors appended. Each handler can transform or reject the promise.
 
 ## Development Workflow
 
@@ -46,7 +47,7 @@ Tests are ESM modules using actual HTTP calls to httpbin.org and jsonplaceholder
 `src/lib.rs` line 33-40: Method string matched case-insensitively against uppercase ("GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"). Unknown methods return `napi::Status::GenericFailure` error.
 
 ### Request Building
-Config fields are transformed to low-level params before native call (raxios.js around lines 39-95):
+Config fields are transformed to low-level params before the dispatcher call (`raxios.js` `rustDispatcher` and `raxios.core.js` `fetchDispatcher`):
 - **baseURL** + **params**: URL construction with query strings
 - **headers**: Merged from defaults + instance defaults + request config
 - **data**: Objects are JSON-serialized before native call; `Content-Type: application/json` is added only if not already set
@@ -62,10 +63,11 @@ Rust side (lines 82-99):
 - Headers collected into `HashMap<String, String>`
 - Non-binary `responseType` values (including `"json"`) follow the text path and are parsed in JS
 
-JavaScript side (lines 127-143):
+JavaScript side (`raxios.js` response parsing and `raxios.core.js` fetchDispatcher):
 - Binary Buffers passed through
 - Strings attempted JSON.parse, fallback to raw string
 - **transformResponse** hook applied after parse
+- Browser `fetchDispatcher` returns ArrayBuffer/Blob/Uint8Array (or Buffer when available) based on `responseType` (`raxios.core.js` lines 182-201)
 
 ### Error Flow
 1. **Rust non-2xx** → serialized as JSON in error message: `{"status": N, "data": "...", "headers": {}}`
@@ -81,13 +83,15 @@ dispatchRequest (native HTTP call)
   ↓
 Response Interceptors (in registration order)
 ```
-Promise chain is built with request interceptors unshifted (prepended) and response interceptors pushed (appended), then reduced via Promise.then() chain (raxios.js around lines 167-184).
+Promise chain is built with request interceptors unshifted (prepended) and response interceptors pushed (appended), then reduced via Promise.then() chain (`raxios.core.js` around lines 292-305).
 
 ## File Reference
 
 - **`src/lib.rs`**: NAPI Rust bindings, HTTP request handler, response marshalling
 - **`src/error.rs`**: Reqwest error mapping for Rust-side `RaxiosError`
-- **`raxios.js`**: Main JavaScript API, interceptor logic, config merging, error parsing, AbortController handling
+- **`raxios.js`**: Node.js API entrypoint, Rust dispatcher, error parsing
+- **`raxios.core.js`**: Shared core helpers (`createInstance`, `fetchDispatcher`, interceptors, JSON parsing)
+- **`raxios.browser.js`**: Browser entrypoint using `fetchDispatcher`
 - **`index.js`**: Platform-specific native binding loader (auto-generated by NAPI-RS)
 - **`index.d.ts`**: TypeScript type definitions (auto-generated)
 - **`Cargo.toml`**: Rust dependencies (napi, reqwest, tokio, serde)
@@ -96,14 +100,14 @@ Promise chain is built with request interceptors unshifted (prepended) and respo
 
 ## Common Patterns for Agents
 
-**Adding a new HTTP method**: Add case to method router in `src/lib.rs` line 33, add `.method()` shortcut to raxios.js line 199+ instance object.
+**Adding a new HTTP method**: Add case to method router in `src/lib.rs` line 33, add `.method()` shortcut to `raxios.core.js` in the `createInstance` method list.
 
-**Modifying error handling**: Update JSON error serialization in `src/lib.rs` lines 102-117, then update JavaScript parsing in raxios.js around lines 96-120.
+**Modifying error handling**: Update JSON error serialization in `src/lib.rs` lines 102-117, then update JavaScript parsing in raxios.js around lines 72-96.
 
-**Adding request/response transform hooks**: Config fields already passed through (transformRequest, transformResponse). Add execution in dispatchRequest before/after native call (raxios.js lines 67-135).
+**Adding request/response transform hooks**: Config fields already passed through (transformRequest, transformResponse). Add execution in the dispatcher before/after the native call (`raxios.js` and `raxios.core.js`).
 
-**Binary data handling**: Response type "arraybuffer" | "buffer" | "blob" | "bytes" triggers binary path in Rust (line 82-92). JavaScript receives Buffer object directly—no parsing needed.
+**Binary data handling**: Response type "arraybuffer" | "buffer" | "blob" | "bytes" triggers binary path in Rust (line 82-92). Node.js receives Buffer data; browser `fetchDispatcher` returns ArrayBuffer/Blob/Uint8Array (or Buffer when available).
 
-**Abortable requests**: Pass `signal` in request config; JS races the native request against the abort signal and returns `code: 'ERR_CANCELED'` on cancellation (raxios.js lines 80-99).
+**Abortable requests**: Pass `signal` in request config; `raxios.js` races the native request against the abort signal and returns `code: 'ERR_CANCELED'` on cancellation, while `raxios.core.js` uses AbortController for fetch-based requests.
 
 **Testing new features**: Use the Vitest suite under `tests/integration/*.test.mjs` (e.g., `tests/integration/basic.test.mjs`). Tests hit real endpoints—validate status and data structure. No mocking framework; add console.log for debugging.
