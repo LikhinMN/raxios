@@ -1,24 +1,85 @@
 "use strict";
 
+/**
+ * @typedef {Object} RaxiosConfig
+ * @property {string} url
+ * @property {string} [method]
+ * @property {string} [baseURL]
+ * @property {Record<string, string>} [headers]
+ * @property {Record<string, string|number|boolean>} [params]
+ * @property {*} [data]
+ * @property {number} [timeout]
+ * @property {string} [responseType]
+ * @property {Function|Function[]} [transformRequest]
+ * @property {Function|Function[]} [transformResponse]
+ * @property {AbortSignal} [signal]
+ */
+
+/**
+ * @typedef {Object} RaxiosResponse
+ * @property {*} data
+ * @property {number} status
+ * @property {Record<string, string>} headers
+ * @property {RaxiosConfig} config
+ */
+
+/**
+ * @typedef {Object} RaxiosError
+ * @property {string} message
+ * @property {string} [code]
+ * @property {number} [status]
+ * @property {{ status: number, data: *, headers: Record<string, string>, config: RaxiosConfig }} [response]
+ * @property {RaxiosConfig} config
+ * @property {boolean} isRaxiosError
+ */
+
+/**
+ * Manages interceptor handlers for requests and responses.
+ * @example
+ * const api = raxios.create({ baseURL: 'https://api.example.com' })
+ * api.interceptors.request.use((config) => config)
+ */
 class InterceptorManager {
     constructor() {
         this.handlers = []
     }
 
+    /**
+     * Register an interceptor handler.
+     * @param {Function} fulfilled
+     * @param {Function} [rejected]
+     * @returns {number} id
+     */
     use(fulfilled, rejected) {
         this.handlers.push({ fulfilled, rejected })
         return this.handlers.length - 1  // id for ejecting
     }
 
+    /**
+     * Remove an interceptor by id.
+     * @param {number} id
+     * @returns {void}
+     */
     eject(id) {
         this.handlers[id] = null
     }
 
+    /**
+     * Iterate over active interceptor handlers.
+     * @param {Function} fn
+     * @returns {void}
+     */
     forEach(fn) {
         this.handlers.forEach(h => h && fn(h))
     }
 }
 
+/**
+ * Create a cancellation error for aborted requests.
+ * @param {RaxiosConfig} config
+ * @param {string} url
+ * @returns {RaxiosError}
+ */
 const createAbortError = (config, url) => {
     const err = new Error('Request canceled')
     err.code = 'ERR_CANCELED'
@@ -27,6 +88,11 @@ const createAbortError = (config, url) => {
     return err
 }
 
+/**
+ * Parse JSON strings while leaving other values untouched.
+ * @param {*} value
+ * @returns {*}
+ */
 function tryParseJSON(value) {
     if (typeof value !== 'string') {
         return value
@@ -35,6 +101,11 @@ function tryParseJSON(value) {
     catch { return value }
 }
 
+/**
+ * Dispatch a request using fetch.
+ * @param {RaxiosConfig} config
+ * @returns {Promise<RaxiosResponse>}
+ */
 async function fetchDispatcher(config) {
     if (typeof fetch !== 'function') {
         throw new Error('fetch is not available in this environment')
@@ -196,6 +267,12 @@ async function fetchDispatcher(config) {
     }
 }
 
+/**
+ * Create a raxios instance with a custom dispatcher.
+ * @param {RaxiosConfig} defaults
+ * @param {Function} dispatcher
+ * @returns {Function}
+ */
 function createInstance(defaults, dispatcher = fetchDispatcher) {
     const interceptors = {
         request: new InterceptorManager(),
@@ -240,12 +317,61 @@ function createInstance(defaults, dispatcher = fetchDispatcher) {
     Object.assign(instance, {
         interceptors,
         defaults,
+        /**
+         * Send a GET request.
+         * @param {string} url
+         * @param {RaxiosConfig} [config]
+         * @returns {Promise<RaxiosResponse>}
+         * @example
+         * const res = await raxios.get('https://api.example.com/users')
+         */
         get: (url, config) => dispatch({ ...config, method: 'GET', url }),
+        /**
+         * Send a POST request.
+         * @param {string} url
+         * @param {*} data
+         * @param {RaxiosConfig} [config]
+         * @returns {Promise<RaxiosResponse>}
+         * @example
+         * const res = await raxios.post('https://api.example.com/users', { name: 'Likhin' })
+         */
         post: (url, data, config) => dispatch({ ...config, method: 'POST', url, data }),
+        /**
+         * Send a PUT request.
+         * @param {string} url
+         * @param {*} data
+         * @param {RaxiosConfig} [config]
+         * @returns {Promise<RaxiosResponse>}
+         */
         put: (url, data, config) => dispatch({ ...config, method: 'PUT', url, data }),
+        /**
+         * Send a PATCH request.
+         * @param {string} url
+         * @param {*} data
+         * @param {RaxiosConfig} [config]
+         * @returns {Promise<RaxiosResponse>}
+         */
         patch: (url, data, config) => dispatch({ ...config, method: 'PATCH', url, data }),
+        /**
+         * Send a DELETE request.
+         * @param {string} url
+         * @param {RaxiosConfig} [config]
+         * @returns {Promise<RaxiosResponse>}
+         */
         delete: (url, config) => dispatch({ ...config, method: 'DELETE', url }),
+        /**
+         * Send a HEAD request.
+         * @param {string} url
+         * @param {RaxiosConfig} [config]
+         * @returns {Promise<RaxiosResponse>}
+         */
         head: (url, config) => dispatch({ ...config, method: 'HEAD', url }),
+        /**
+         * Send an OPTIONS request.
+         * @param {string} url
+         * @param {RaxiosConfig} [config]
+         * @returns {Promise<RaxiosResponse>}
+         */
         options: (url, config) => dispatch({ ...config, method: 'OPTIONS', url }),
     })
 
@@ -259,4 +385,3 @@ module.exports = {
     fetchDispatcher,
     createInstance,
 }
-
