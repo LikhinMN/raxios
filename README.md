@@ -385,6 +385,19 @@ console.log(res.data.name)
 | `raxios(config)` method behavior | Always `GET` | Honors `method` |
 | Binary response helpers | `responseType` (`arraybuffer`, `buffer`, `blob`, `bytes`) | `responseType` support |
 
+## Benchmarks
+
+Benchmarked against a local Express server on Node.js 22, AMD Ryzen 5 7235HS.
+
+| Test | raxios | axios | speedup |
+| --- | --- | --- | --- |
+| GET | 522 µs | 824 µs | 1.58x |
+| GET w/ params | 479 µs | 736 µs | 1.54x |
+| POST JSON | 534 µs | 825 µs | 1.55x |
+| Concurrent x5 | 1.48 ms | 2.85 ms | 1.93x |
+
+> Run benchmarks yourself: `node benchmarks/http.bench.mjs`
+
 ## Contributing
 
 Build locally:
