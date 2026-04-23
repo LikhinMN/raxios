@@ -307,12 +307,20 @@ function createInstance(defaults, dispatcher = fetchDispatcher) {
         return promise
     }
 
-    const instance = (urlOrConfig, config) => {
-        if (typeof urlOrConfig === 'string') {
-            return dispatch({ method: 'GET', ...config, url: urlOrConfig })
-        }
-        return dispatch({ method: 'GET', ...urlOrConfig })
+   const instance = (urlOrConfig, config) => {
+    if (typeof urlOrConfig === 'string') {
+        return dispatch({
+            ...config,
+            method: (config?.method || 'GET').toUpperCase(),
+            url: urlOrConfig
+        })
     }
+
+    return dispatch({
+        ...urlOrConfig,
+        method: (urlOrConfig.method || 'GET').toUpperCase()
+    })
+}
 
     Object.assign(instance, {
         interceptors,
